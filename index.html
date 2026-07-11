@@ -196,7 +196,7 @@
     </div>
   </section>
 
-  <section class="panel" id="panel-about" data-at="0.2767" data-range="0.10">
+  <section class="panel" id="panel-about" data-at="0.2575" data-range="0.05">
     <div class="card">
       <div class="eyebrow">Who's walking these halls</div>
       <h2 class="card-title">Hi, I'm Drew.</h2>
@@ -205,7 +205,7 @@
     </div>
   </section>
 
-  <section class="panel" id="panel-projects" data-at="0.4464" data-range="0.14">
+  <section class="panel" id="panel-projects" data-at="0.4225" data-range="0.04">
     <div class="card">
       <div class="eyebrow">Rooms off this corridor</div>
       <h2 class="card-title">Things I've built</h2>
@@ -238,7 +238,7 @@
     </div>
   </section>
 
-  <section class="panel" id="panel-skills" data-at="0.614" data-range="0.11">
+  <section class="panel" id="panel-skills" data-at="0.5925" data-range="0.05">
     <div class="card">
       <div class="eyebrow">What's in the toolkit</div>
       <h2 class="card-title">Tools & Stack</h2>
@@ -477,13 +477,17 @@ for (let i = 0; i < SAMPLES; i++) {
 // ---------- Colored beacons at each turn — jewel-toned pools of light on ----------
 // the otherwise pale walls, one per corridor turn, so each thematic zone
 // (about / skills / projects) picks up its own hue as you walk through it.
-// Each panel's data-at is tuned against curve.getPointAt so its text bubble
-// appears exactly when its beacon is dead-ahead and fully framed — not when
-// the camera is standing on top of it (at that point you're level with/past
-// the light and it's out of frame). The sweet spot is ~0.025 of progress
-// before the camera reaches the beacon's waypoint. Pairing: teal ->
-// panel-about, violet -> panel-projects, rose -> panel-skills. The blue
-// beacon is just the first light you pass, before any bubble appears.
+// Each panel's data-at/data-range is tuned by actually projecting its
+// beacon's lantern position into camera space (Vector3.project) across a
+// sweep of t values, to find the real window where the beacon reads as
+// centered and prominent on screen (not just "technically in frustum" —
+// early in the approach it's visible but tiny/off to the side, and once the
+// camera is within ~2 units it's already overhead/behind and gone). The
+// panel's visible window is set to match that measured on-screen window, so
+// the bubble is only up while its light is actually the thing you're looking
+// at. Pairing: teal -> panel-about, violet -> panel-projects, rose ->
+// panel-skills. The blue beacon is just the first light you pass, before any
+// bubble appears.
 const mazeBeacons = [
   { wp: waypoints[2], color: 0x5b8cff },  // blue — first turn (ambient only)
   { wp: waypoints[4], color: 0x2dd4bf },  // teal — lines up with panel-about
