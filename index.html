@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Drew — Labyrinth</title>
+<meta name="description" content="An interactive first-person labyrinth portfolio. Scroll to walk the maze." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1f2937;
+    --ink-soft:#475569;
+    --blue:#2b6cb0;
+    --blue-soft:#5b8fc9;
+    --panel-bg: rgba(255,255,255,0.62);
+    --panel-border: rgba(148,163,184,0.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:#eef2f7;
+    color:var(--ink);
+    font-family:'Inter', system-ui, sans-serif;
+    overflow:hidden; /* virtual-scroll driven experience — no native page scroll */
+    overscroll-behavior:none;
+  }
+  #webgl{
+    position:fixed; inset:0; width:100vw; height:100vh; display:block; z-index:0;
+  }
+
+  .hud{
+    position:fixed; z-index:20; pointer-events:none;
+  }
+  #progress-rail{
+    top:0; left:0; width:100%; height:3px; background:transparent;
+  }
+  #progress-fill{
+    height:100%; width:0%; background:linear-gradient(90deg,var(--blue-soft),var(--blue));
+    transition:width .05s linear;
+  }
+  #scroll-hint{
+    left:50%; bottom:28px; transform:translateX(-50%);
+    font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-soft);
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    opacity:1; transition:opacity .6s ease;
+  }
+  #scroll-hint .chevron{
+    width:14px; height:14px; border-right:2px solid var(--blue); border-bottom:2px solid var(--blue);
+    transform:rotate(45deg); animation:bob 1.6s ease-in-out infinite;
+  }
+  @keyframes bob{
+    0%,100%{ transform:translateY(0) rotate(45deg); opacity:.4; }
+    50%{ transform:translateY(6px) rotate(45deg); opacity:1; }
+  }
+
+  #brand{
+    top:24px; left:28px; font-family:'Fraunces', serif; font-weight:600; font-size:15px;
+    letter-spacing:.02em; color:var(--ink);
+  }
+  #brand span{ color:var(--blue); }
+
+  main{ position:relative; z-index:10; }
+  .panel{
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    padding: 6vh 6vw; opacity:0; pointer-events:none;
+    will-change:opacity;
+  }
+  .panel.visible{ pointer-events:auto; }
+  .card{
+    max-width:640px; width:100%;
+    background:var(--panel-bg);
+    border:1px solid var(--panel-border);
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+    border-radius:20px;
+    padding:44px 40px;
+    box-shadow:0 20px 60px -20px rgba(30,58,95,0.25);
+    will-change:transform;
+  }
+  .eyebrow{
+    font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--blue);
+    font-weight:600; margin-bottom:14px;
+  }
+  h1.hero-title{
+    font-family:'Fraunces', serif; font-weight:600; font-size:clamp(34px,6vw,58px);
+    line-height:1.05; margin:0 0 14px; color:var(--ink);
+  }
+  h2.card-title{
+    font-family:'Fraunces', serif; font-weight:600; font-size:clamp(26px,4vw,36px);
+    line-height:1.1; margin:0 0 16px; color:var(--ink);
+  }
+  p.lede{ font-size:16px; line-height:1.65; color:var(--ink-soft); margin:0 0 8px; }
+  .cta-row{ margin-top:22px; display:flex; gap:14px; flex-wrap:wrap; }
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:11px 20px; border-radius:999px; font-size:13px; font-weight:600;
+    text-decoration:none; letter-spacing:.02em;
+    background:var(--ink); color:#fff; transition:transform .2s ease, background .2s ease;
+  }
+  .btn:hover{ background:var(--blue); transform:translateY(-1px); }
+  .btn.ghost{ background:transparent; color:var(--ink); border:1px solid var(--panel-border); }
+  .btn.ghost:hover{ background:rgba(43,108,176,.08); }
+
+  .skills-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:18px; }
+  .skill-chip{
+    display:flex; align-items:center; gap:10px; font-size:13.5px; font-weight:500;
+    background:rgba(43,108,176,.06); border:1px solid rgba(43,108,176,.15);
+    padding:10px 12px; border-radius:12px; color:var(--ink);
+  }
+  .skill-chip .dot{ width:6px; height:6px; border-radius:50%; background:var(--blue); flex:none; }
+
+  .project-list{ display:flex; flex-direction:column; gap:10px; margin-top:18px; }
+  .project-row{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:14px 16px; border-radius:14px; text-decoration:none; color:var(--ink);
+    background:rgba(255,255,255,.5); border:1px solid var(--panel-border);
+    transition:background .2s ease, transform .2s ease;
+  }
+  .project-row:hover{ background:rgba(43,108,176,.08); transform:translateX(2px); }
+  .project-row .pname{ font-weight:600; font-size:14.5px; }
+  .project-row .pdesc{ font-size:12.5px; color:var(--ink-soft); margin-top:2px; }
+  .project-row .arrow{ font-size:16px; color:var(--blue); flex:none; }
+
+  #panel-cliff .card{ background:rgba(255,255,255,.35); text-align:center; }
+  #panel-cliff h2{ font-family:'Fraunces', serif; font-size:clamp(24px,4vw,34px); font-weight:500; color:var(--ink); }
+  #panel-cliff p{ color:var(--ink-soft); font-size:15px; }
+
+  /* panel-contact uses the same scroll-distance reveal as the other panels,
+     but gets its own slower graceful fade for the final payoff moment. */
+  #panel-contact{ transition:opacity 1.1s ease .25s; }
+
+  .socials{ display:flex; gap:12px; margin-top:22px; flex-wrap:wrap; }
+
+  @media (max-width:640px){
+    .skills-grid{ grid-template-columns:1fr; }
+    .card{ padding:30px 24px; border-radius:16px; }
+  }
+
+  #loader{
+    position:fixed; inset:0; z-index:100; background:#eef2f7;
+    display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px;
+    transition:opacity .6s ease, visibility .6s ease;
+  }
+  #loader .ring{
+    width:34px; height:34px; border-radius:50%;
+    border:2px solid rgba(43,108,176,.2); border-top-color:var(--blue);
+    animation:spin 0.9s linear infinite;
+  }
+  #loader span{ font-size:12px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-soft); }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  noscript{
+    position:fixed; inset:0; z-index:200; background:#fff; color:#111;
+    display:flex; align-items:center; justify-content:center; padding:40px; text-align:center;
+    font-family:sans-serif;
+  }
+</style>
+</head>
+<body>
+
+<div id="loader"><div class="ring"></div><span>Entering the labyrinth</span></div>
+
+<canvas id="webgl"></canvas>
+
+<div class="hud" id="progress-rail"><div id="progress-fill"></div></div>
+<div class="hud" id="brand">Drew<span>.</span></div>
+<div class="hud" id="scroll-hint"><span>Scroll to walk</span><div class="chevron"></div></div>
+
+<main>
+  <section class="panel" id="panel-hero" data-at="0.02" data-range="0.07">
+    <div class="card" style="background:rgba(255,255,255,0.4); box-shadow:none; border:none; text-align:center;">
+      <div class="eyebrow">An interactive walk</div>
+      <h1 class="hero-title">A quick maze through<br/>my work and skills.</h1>
+      <p class="lede">Keep scrolling. The walls are close, the light is low —<br/>everything about me is somewhere further in.</p>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-about" data-at="0.20" data-range="0.10">
+    <div class="card">
+      <div class="eyebrow">Who's walking these halls</div>
+      <h2 class="card-title">Hi, I'm Drew.</h2>
+      <p class="lede">I'm a creator. AI automation, apps, agents, ad campaigns — anything you need, I build it.</p>
+      <p class="lede">Lately, while being a student athlete at FGCU, I built a neighborhood chore marketplace app, a voice bot that acts as an AI receptionist, lead generation scrapers for small businesses, and fully developed websites for anyone that needs one.</p>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-projects" data-at="0.42" data-range="0.14">
+    <div class="card">
+      <div class="eyebrow">Rooms off this corridor</div>
+      <h2 class="card-title">Things I've built</h2>
+      <div class="project-list">
+        <a class="project-row" href="https://github.com/drewwork6-source/ChoreNextDoor-app" target="_blank" rel="noopener">
+          <div><div class="pname">ChoreNextDoor</div><div class="pdesc">Neighborhood chore marketplace — Expo mobile app</div></div>
+          <span class="arrow">↗</span>
+        </a>
+        <a class="project-row" href="https://drewwork6-source.github.io/chorenextdoor-website/" target="_blank" rel="noopener">
+          <div><div class="pname">ChoreNextDoor — Website</div><div class="pdesc">Marketing site + interactive demo</div></div>
+          <span class="arrow">↗</span>
+        </a>
+        <a class="project-row" href="https://github.com/drewwork6-source/voice-bot" target="_blank" rel="noopener">
+          <div><div class="pname">Voice Bot</div><div class="pdesc">AI agent that phone-tests medical office AI receptionists</div></div>
+          <span class="arrow">↗</span>
+        </a>
+        <a class="project-row" href="https://github.com/drewwork6-source/leads-scraper" target="_blank" rel="noopener">
+          <div><div class="pname">Leads Scraper</div><div class="pdesc">Finds home-service businesses with no website</div></div>
+          <span class="arrow">↗</span>
+        </a>
+        <a class="project-row" href="https://drewwork6-source.github.io/turf-factory-mockups/" target="_blank" rel="noopener">
+          <div><div class="pname">The Turf Factory</div><div class="pdesc">Client site mockups — three design directions</div></div>
+          <span class="arrow">↗</span>
+        </a>
+        <a class="project-row" href="https://drewwork6-source.github.io/fnwaste-website/" target="_blank" rel="noopener">
+          <div><div class="pname">F&amp;N Waste Removal</div><div class="pdesc">Local business website</div></div>
+          <span class="arrow">↗</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-skills" data-at="0.66" data-range="0.11">
+    <div class="card">
+      <div class="eyebrow">What's in the toolkit</div>
+      <h2 class="card-title">Tools & Stack</h2>
+      <div class="skills-grid">
+        <div class="skill-chip"><span class="dot"></span>Anthropic Claude API</div>
+        <div class="skill-chip"><span class="dot"></span>React Native / Expo</div>
+        <div class="skill-chip"><span class="dot"></span>Twilio Voice + Streams</div>
+        <div class="skill-chip"><span class="dot"></span>Deepgram STT</div>
+        <div class="skill-chip"><span class="dot"></span>ElevenLabs TTS</div>
+        <div class="skill-chip"><span class="dot"></span>FastAPI / Python</div>
+        <div class="skill-chip"><span class="dot"></span>Playwright + Crawlee</div>
+        <div class="skill-chip"><span class="dot"></span>Three.js / WebGL</div>
+        <div class="skill-chip"><span class="dot"></span>Tailwind CSS</div>
+        <div class="skill-chip"><span class="dot"></span>Node.js</div>
+        <div class="skill-chip"><span class="dot"></span>Clear communicator</div>
+        <div class="skill-chip"><span class="dot"></span>Fast learner</div>
+        <div class="skill-chip"><span class="dot"></span>Team player</div>
+        <div class="skill-chip"><span class="dot"></span>Competitive drive</div>
+        <div class="skill-chip"><span class="dot"></span>Self-starter</div>
+        <div class="skill-chip"><span class="dot"></span>Detail-oriented</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-cliff" data-at="0.83" data-range="0.08">
+    <div class="card">
+      <h2>The walls just… ended.</h2>
+      <p>Every path has a drop. This is mine.</p>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-contact" data-at="0.972" data-range="0.06">
+    <div class="card" style="text-align:center;">
+      <div class="eyebrow">You made it through</div>
+      <h2 class="card-title">Let's build something.</h2>
+      <p class="lede">If any of this was interesting, I'd like to hear from you.</p>
+      <div class="cta-row" style="justify-content:center;">
+        <a class="btn" href="mailto:drew.work6@outlook.com">Email me</a>
+        <a class="btn ghost" href="tel:+18475074013">847-507-4013</a>
+        <a class="btn ghost" href="https://github.com/drewwork6-source" target="_blank" rel="noopener">GitHub ↗</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<noscript>This experience requires JavaScript and a WebGL-capable browser.</noscript>
+
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script>
+/* Uses the classic global THREE build (not ES modules) so this page
+   works when opened directly via double-click (file://) as well as
+   when served over http(s) — ES module imports are blocked by CORS
+   under file://, which silently breaks the whole scroll experience. */
+
+/* ----------------------------------------------------------------
+   LABYRINTH PORTFOLIO
+   A scroll-driven first-person walk through a light, minimal maze.
+   Camera follows a hand-authored spline; walls flank the path;
+   the path drops away mid-way for a "cliff" reveal, then levels
+   out into an open, bright landing for the contact section.
+------------------------------------------------------------------- */
+
+const canvas = document.getElementById('webgl');
+const loader = document.getElementById('loader');
+const scrollHint = document.getElementById('scroll-hint');
+const progressFill = document.getElementById('progress-fill');
+const panels = Array.from(document.querySelectorAll('.panel'));
+// panel-contact uses the same scroll-distance reveal system as every other
+// panel — it just sits at the very end (data-at close to 1) and keeps its
+// own slower CSS fade (see #panel-contact rule) for the payoff moment.
+const panelData = panels.map((panel) => ({
+  panel,
+  card: panel.querySelector('.card'),
+  at: parseFloat(panel.dataset.at),
+  range: parseFloat(panel.dataset.range),
+}));
+
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---------- Renderer / Scene ----------
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = false;
+
+const scene = new THREE.Scene();
+const FOG_COLOR = 0xeef2f7;
+scene.background = new THREE.Color(FOG_COLOR);
+scene.fog = new THREE.FogExp2(FOG_COLOR, 0.028);
+
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 300);
+
+// ---------- Lighting (soft, airy, museum-like) ----------
+// Dialed back slightly from pure-white-flood so the colored corridor
+// beacons (below) actually have room to read against the walls.
+const hemi = new THREE.HemisphereLight(0xffffff, 0xd7e2ee, 0.85);
+scene.add(hemi);
+const dir = new THREE.DirectionalLight(0xffffff, 0.42);
+dir.position.set(6, 14, 4);
+scene.add(dir);
+const fillLight = new THREE.PointLight(0xbcd3ea, 0.35, 60);
+fillLight.position.set(0, 8, -10);
+scene.add(fillLight);
+
+// ---------- Materials ----------
+function makeWallTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f2f3fc';
+  ctx.fillRect(0, 0, 256, 256);
+  ctx.strokeStyle = 'rgba(129,140,248,0.3)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 256; i += 32) {
+    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(129,140,248,0.15)';
+  for (let j = 0; j <= 256; j += 64) {
+    ctx.beginPath(); ctx.moveTo(0, j); ctx.lineTo(256, j); ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+const wallTex = makeWallTexture();
+
+const wallMat = new THREE.MeshStandardMaterial({
+  color: 0xf5f7fa, roughness: 0.92, metalness: 0.02, map: wallTex
+});
+const floorMat = new THREE.MeshStandardMaterial({
+  color: 0xdadff2, roughness: 0.85, metalness: 0.05
+});
+const landingFloorMat = new THREE.MeshStandardMaterial({
+  color: 0xf1f4f8, roughness: 1, metalness: 0
+});
+
+// ---------- Camera path (authored waypoints) ----------
+// x,z steer the corridor turns; the curve only covers the maze itself —
+// it ends right at the lip of the hole. Everything past that point (the
+// drop, the bounce, the settle, the lamp) is driven procedurally by u
+// below, not by more curve waypoints, so shortening the fall in world
+// space doesn't compress how much scroll it gets to play out over.
+const waypoints = [
+  new THREE.Vector3(0, 1.65, 0),
+  new THREE.Vector3(0, 1.65, -16),
+  new THREE.Vector3(5, 1.65, -28),      // turn right
+  new THREE.Vector3(6, 1.65, -44),
+  new THREE.Vector3(-3, 1.65, -56),     // turn left
+  new THREE.Vector3(-5, 1.65, -74),
+  new THREE.Vector3(2, 1.65, -88),      // turn right (about/skills zone)
+  new THREE.Vector3(4, 1.65, -106),
+  new THREE.Vector3(-2, 1.65, -120),    // weave (projects zone)
+  new THREE.Vector3(0, 1.65, -136),
+  new THREE.Vector3(0, 1.5, -150),      // the lip of the hole
+];
+const curve = new THREE.CatmullRomCurve3(waypoints, false, 'catmullrom', 0.35);
+
+// ---------- The hole / fall / bounce / lamp sequence ----------
+// FALL_T_START is the scroll fraction where the maze ends and you're at
+// the edge, looking down into the hole. Everything from there to t=1 is
+// the fall — parameterized locally by u (0..1) so it always gets the same
+// share of scroll regardless of how "tall" the drop is in world units.
+const FALL_T_START = 0.79;
+const edgePoint = curve.getPointAt(1);           // world position at the lip of the hole
+const edgeTangent = curve.getTangentAt(1).clone();
+edgeTangent.y = 0;
+edgeTangent.normalize();                          // level "forward" direction once you land
+
+const FALL_DEPTH = 17;                            // straight-down eye-height drop, in world units
+const bottomEyeY = edgePoint.y - FALL_DEPTH;
+const restEyeY = bottomEyeY + 0.9;                // where the camera settles after the bounce
+
+// u-space phase boundaries: fall (drop straight down) -> bounce (hit and
+// rebound) -> settle (look up, lamp turns on, level out to look straight
+// ahead). Settle runs all the way to u=1 — scrolling further just fades in
+// the final text bubble; nothing else happens after that.
+const FALL_U_END = 0.45;
+const BOUNCE_U_END = 0.72;
+
+function smoothstep(x) { return x * x * (3 - 2 * x); }
+function clamp01(v) { return Math.min(1, Math.max(0, v)); }
+
+// ---------- Corridor geometry (walls stop before the hole) ----------
+const wallGroup = new THREE.Group();
+const floorGroup = new THREE.Group();
+scene.add(wallGroup, floorGroup);
+
+const isSmallScreen = window.innerWidth < 760;
+const SAMPLES = isSmallScreen ? 130 : 220;
+const WALL_HEIGHT = 8.5;
+const CORRIDOR_HALF_WIDTH = 2.1;
+
+const sampledPoints = [];
+for (let i = 0; i <= SAMPLES; i++) sampledPoints.push(curve.getPointAt(i / SAMPLES));
+
+function isInChasm(t) {
+  return t > 0.88; // last stretch of corridor opens up so the hole is visible before you reach it
+}
+
+for (let i = 0; i < SAMPLES; i++) {
+  const t0 = i / SAMPLES, t1 = (i + 1) / SAMPLES;
+  if (isInChasm(t0) || isInChasm(t1)) continue;
+
+  const p0 = sampledPoints[i], p1 = sampledPoints[i + 1];
+  const dir3 = new THREE.Vector3().subVectors(p1, p0);
+  const segLen = dir3.length();
+  if (segLen < 0.0001) continue;
+  dir3.normalize();
+  const up = new THREE.Vector3(0, 1, 0);
+  const right = new THREE.Vector3().crossVectors(dir3, up).normalize();
+  const mid = new THREE.Vector3().addVectors(p0, p1).multiplyScalar(0.5);
+
+  // Floor sits ~1.3 below eye height at THIS point on the path — tracked per
+  // segment (not a fixed world height) so geometry follows the path's slope
+  // right up to the chasm edge instead of floating/clipping through it.
+  const floorY = mid.y - 1.3;
+
+  // left + right wall
+  [-1, 1].forEach((side) => {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(0.4, WALL_HEIGHT, segLen * 1.02), wallMat);
+    const offset = right.clone().multiplyScalar(side * CORRIDOR_HALF_WIDTH);
+    wall.position.copy(mid).add(offset);
+    wall.position.y = floorY + WALL_HEIGHT / 2;
+    wall.lookAt(wall.position.clone().add(dir3));
+    wallGroup.add(wall);
+  });
+
+  // floor strip
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(CORRIDOR_HALF_WIDTH * 2 + 0.4, 0.2, segLen * 1.05), floorMat);
+  floor.position.copy(mid);
+  floor.position.y = floorY;
+  floor.lookAt(floor.position.clone().add(dir3));
+  floorGroup.add(floor);
+}
+
+// ---------- Colored beacons at each turn — jewel-toned pools of light on ----------
+// the otherwise pale walls, one per corridor turn, so each thematic zone
+// (about / skills / projects) picks up its own hue as you walk through it.
+const mazeBeacons = [
+  { wp: waypoints[2], color: 0x5b8cff },  // blue — first turn
+  { wp: waypoints[4], color: 0x2dd4bf },  // teal — second turn
+  { wp: waypoints[6], color: 0xa78bfa },  // violet — about/skills zone
+  { wp: waypoints[8], color: 0xf472b6 },  // rose — projects zone
+];
+mazeBeacons.forEach(({ wp, color }) => {
+  const floorY = wp.y - 1.3;
+  const lanternPos = new THREE.Vector3(wp.x, wp.y + 1.4, wp.z);
+
+  // actual light source — casts real colored illumination onto nearby
+  // wall/floor surfaces
+  const light = new THREE.PointLight(color, 3.4, 15, 2);
+  light.position.copy(lanternPos);
+  scene.add(light);
+
+  // a glowing lantern orb at eye level, unlit (MeshBasicMaterial) so it
+  // reads as a saturated pop of color regardless of ambient light
+  const orb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22, 16, 16),
+    new THREE.MeshBasicMaterial({ color })
+  );
+  orb.position.copy(lanternPos);
+  scene.add(orb);
+
+  // soft translucent halo around the orb to fake a glow/bloom
+  const halo = new THREE.Mesh(
+    new THREE.SphereGeometry(0.75, 16, 16),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25, depthWrite: false })
+  );
+  halo.position.copy(lanternPos);
+  scene.add(halo);
+
+  // a full-height glowing pillar of color against the wall, floor to
+  // ceiling, so the beacon reads even from a distance down the corridor
+  const pillarHeight = WALL_HEIGHT * 0.88;
+  const pillar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.16, 0.16, pillarHeight, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, depthWrite: false })
+  );
+  pillar.position.set(wp.x, floorY + pillarHeight / 2, wp.z);
+  scene.add(pillar);
+
+  // a soft pool of color on the floor beneath the beacon
+  const floorPool = new THREE.Mesh(
+    new THREE.CircleGeometry(1.6, 28),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, depthWrite: false })
+  );
+  floorPool.rotation.x = -Math.PI / 2;
+  floorPool.position.set(wp.x, floorY + 0.03, wp.z);
+  scene.add(floorPool);
+});
+
+// ---------- Colorful dust drifting through the corridor ----------
+// A single Points cloud spanning the whole maze (not just the shaft),
+// tinted through the same jewel-tone palette as the beacons above so the
+// walk feels like it's shimmering with color rather than flat and pale.
+const mazeDustCount = 260;
+const mazeDustGeo = new THREE.BufferGeometry();
+const mazeDustPos = new Float32Array(mazeDustCount * 3);
+const mazeDustCol = new Float32Array(mazeDustCount * 3);
+const dustPalette = [0x5b8cff, 0x2dd4bf, 0xa78bfa, 0xf472b6, 0xfbbf24].map((c) => new THREE.Color(c));
+
+for (let i = 0; i < mazeDustCount; i++) {
+  const dt = Math.random() * 0.86; // stay inside the corridor, clear of the chasm
+  const p = curve.getPointAt(dt);
+  mazeDustPos[i * 3] = p.x + (Math.random() - 0.5) * (CORRIDOR_HALF_WIDTH * 1.7);
+  mazeDustPos[i * 3 + 1] = p.y - 0.8 + Math.random() * (WALL_HEIGHT - 1);
+  mazeDustPos[i * 3 + 2] = p.z + (Math.random() - 0.5) * 1.5;
+
+  const segF = dt * (dustPalette.length - 1);
+  const segIdx = Math.min(dustPalette.length - 2, Math.floor(segF));
+  const col = dustPalette[segIdx].clone().lerp(dustPalette[segIdx + 1], segF - segIdx);
+  mazeDustCol[i * 3] = col.r;
+  mazeDustCol[i * 3 + 1] = col.g;
+  mazeDustCol[i * 3 + 2] = col.b;
+}
+mazeDustGeo.setAttribute('position', new THREE.BufferAttribute(mazeDustPos, 3));
+mazeDustGeo.setAttribute('color', new THREE.BufferAttribute(mazeDustCol, 3));
+const mazeDustMat = new THREE.PointsMaterial({
+  size: 0.075, vertexColors: true, transparent: true, opacity: 0.8, sizeAttenuation: true,
+});
+const mazeDust = new THREE.Points(mazeDustGeo, mazeDustMat);
+scene.add(mazeDust);
+
+// ---------- The hole: a straight vertical shaft under the lip ----------
+const shaftRadius = CORRIDOR_HALF_WIDTH + 0.6;
+const shaftTopY = edgePoint.y - 1.3;       // floor level right at the lip
+const shaftBottomY = bottomEyeY - 2.5;     // extends a bit past where you land
+const shaftMat = new THREE.MeshStandardMaterial({
+  color: 0x11161d, roughness: 1, metalness: 0, side: THREE.BackSide
+});
+const shaft = new THREE.Mesh(
+  new THREE.CylinderGeometry(shaftRadius, shaftRadius, shaftTopY - shaftBottomY, 28, 1, true),
+  shaftMat
+);
+shaft.position.set(edgePoint.x, (shaftTopY + shaftBottomY) / 2, edgePoint.z);
+scene.add(shaft);
+
+// Bright rim so the opening reads clearly as a hole in the floor
+const rimMat = new THREE.MeshStandardMaterial({
+  color: 0xeef2f7, roughness: 0.85, emissive: 0x2b6cb0, emissiveIntensity: 0.15
+});
+const rim = new THREE.Mesh(new THREE.TorusGeometry(shaftRadius, 0.12, 12, 40), rimMat);
+rim.rotation.x = Math.PI / 2;
+rim.position.set(edgePoint.x, shaftTopY, edgePoint.z);
+scene.add(rim);
+
+// ---------- The lamp, waiting in the dark where you land ----------
+const LAMP_AHEAD = 4.5;   // how far ahead of the landing spot the lamp stands
+const landingFloorY = restEyeY - 1.3;
+const lampPos = new THREE.Vector3(
+  edgePoint.x + edgeTangent.x * LAMP_AHEAD,
+  restEyeY + 2.5,
+  edgePoint.z + edgeTangent.z * LAMP_AHEAD
+);
+
+const lampPoleMat = new THREE.MeshStandardMaterial({ color: 0x394150, roughness: 0.55, metalness: 0.35 });
+const lampBulbMat = new THREE.MeshStandardMaterial({
+  color: 0xfff2d6, emissive: 0x000000, emissiveIntensity: 0, roughness: 0.3
+});
+const lampGroup = new THREE.Group();
+const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.4, 12), lampPoleMat);
+lampPole.position.y = -0.4;
+const lampShade = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.42, 20, 1, true), lampPoleMat);
+lampShade.rotation.x = Math.PI;
+lampShade.position.y = 0.32;
+const lampBulb = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 16), lampBulbMat);
+lampBulb.position.y = 0.16;
+lampGroup.add(lampPole, lampShade, lampBulb);
+lampGroup.position.copy(lampPos);
+scene.add(lampGroup);
+
+const lampLight = new THREE.PointLight(0xffd9a0, 0, 13, 2);
+lampLight.position.copy(lampPos);
+scene.add(lampLight);
+
+const HEMI_BASE = hemi.intensity;
+const DIR_BASE = dir.intensity;
+const LAMP_MAX = 2.2;
+
+// Landing floor — open, no walls, just a place to come to rest
+const landingFloor = new THREE.Mesh(new THREE.CircleGeometry(14, 48), landingFloorMat);
+landingFloor.rotation.x = -Math.PI / 2;
+landingFloor.position.set(
+  edgePoint.x + edgeTangent.x * LAMP_AHEAD * 0.6,
+  landingFloorY,
+  edgePoint.z + edgeTangent.z * LAMP_AHEAD * 0.6
+);
+scene.add(landingFloor);
+
+// ---------- Drifting light particles, confined to the shaft + chamber ----------
+const particleCount = 220;
+const particleGeo = new THREE.BufferGeometry();
+const positions = new Float32Array(particleCount * 3);
+for (let i = 0; i < particleCount; i++) {
+  // positions are LOCAL offsets — the group itself is placed at the shaft
+  // below, so its slow rotation spins the cloud in place instead of
+  // sweeping it around the distant world origin.
+  positions[i * 3] = (Math.random() - 0.5) * 8;
+  positions[i * 3 + 1] = shaftBottomY + Math.random() * (edgePoint.y - shaftBottomY);
+  positions[i * 3 + 2] = (Math.random() - 0.5) * 8;
+}
+particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+const particleMat = new THREE.PointsMaterial({ color: 0x8fb4dd, size: 0.09, transparent: true, opacity: 0.55 });
+const particles = new THREE.Points(particleGeo, particleMat);
+particles.position.set(edgePoint.x, 0, edgePoint.z);
+scene.add(particles);
+
+// ---------- Virtual-scroll-driven progress ----------
+// This experience is a fixed, full-screen 3D scene with no real page
+// scrollbar. Wheel, touch-drag, and keyboard input are captured directly
+// and mapped onto a 0..1 "walk" progress value, rather than relying on
+// native document scrolling (which is fragile across browsers/zoom levels
+// for full-viewport fixed-position layouts like this one).
+let targetProgress = 0;
+let progress = 0;
+let virtualScroll = 0;
+const SCROLL_UNIT = 2600; // wheel-delta px equivalent of the full 0..1 walk
+
+function setProgress(v) {
+  virtualScroll = clamp01(v);
+  targetProgress = virtualScroll;
+  if (targetProgress > 0.01) scrollHint.style.opacity = '0';
+}
+
+window.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  setProgress(virtualScroll + e.deltaY / SCROLL_UNIT);
+}, { passive: false });
+
+let touchStartY = null;
+window.addEventListener('touchstart', (e) => {
+  touchStartY = e.touches[0].clientY;
+}, { passive: true });
+window.addEventListener('touchmove', (e) => {
+  if (touchStartY === null) return;
+  const currentY = e.touches[0].clientY;
+  const deltaY = touchStartY - currentY;
+  touchStartY = currentY;
+  setProgress(virtualScroll + deltaY / (SCROLL_UNIT * 0.55));
+}, { passive: true });
+
+window.addEventListener('keydown', (e) => {
+  const step = 0.035;
+  if (['ArrowDown', 'PageDown', ' '].includes(e.key)) {
+    e.preventDefault();
+    setProgress(virtualScroll + step);
+  } else if (['ArrowUp', 'PageUp'].includes(e.key)) {
+    e.preventDefault();
+    setProgress(virtualScroll - step);
+  }
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ---------- Panel visibility tied to progress ----------
+function updatePanels(p) {
+  panelData.forEach(({ panel, card, at, range }) => {
+    // Fixed, no fade: the card is either fully there or fully gone. No
+    // opacity ramp, no scale animation, no drift — it just shows up when
+    // you're in range of it and disappears the instant you're not.
+    const dist = Math.abs(p - at);
+    const inRange = dist < range / 2;
+
+    panel.style.opacity = inRange ? '1' : '0';
+    if (card) {
+      card.style.transform = 'none';
+    }
+    panel.classList.toggle('visible', inRange);
+  });
+}
+
+// ---------- Camera update ----------
+const tmpLook = new THREE.Vector3();
+const tmpHoriz = new THREE.Vector3();
+const clock = new THREE.Clock();
+const FOG_BASE = 0.028;
+
+function updateCamera(p) {
+  const t = Math.min(1, Math.max(0.001, p));
+
+  if (t < FALL_T_START) {
+    // ---------- walking the maze ----------
+    // tLocal can reach exactly 1 right as the maze ends, so the look-ahead
+    // target is built from position + tangent-direction offset (not a
+    // further curve sample) — sampling a couple percent further along the
+    // curve for the look point would run past t=1 and either clamp flat
+    // (degenerate lookAt) or, worse, get overtaken by pos itself, flipping
+    // the view backward for a frame right at the edge.
+    const tLocal = Math.min(1, t / FALL_T_START);
+    const pos = curve.getPointAt(tLocal);
+    const tangent = curve.getTangentAt(tLocal);
+    tmpLook.copy(pos).add(tangent.multiplyScalar(0.6));
+
+    camera.position.copy(pos);
+    if (!reduceMotion) {
+      camera.position.y += Math.sin(clock.getElapsedTime() * 3.2) * 0.035;
+    }
+
+    scene.fog.density = FOG_BASE;
+    fillLight.intensity = 0.35;
+    hemi.intensity = HEMI_BASE;
+    dir.intensity = DIR_BASE;
+    lampLight.intensity = 0;
+    lampBulbMat.emissiveIntensity = 0;
+
+    camera.lookAt(tmpLook);
+    return;
+  }
+
+  // ---------- the hole: drop -> bounce -> settle and look up ----------
+  const u = clamp01((t - FALL_T_START) / (1 - FALL_T_START));
+  let eyeY, pitchDown, fogDensity, fillInt, lampU;
+  let camX = edgePoint.x, camZ = edgePoint.z;
+
+  if (u <= FALL_U_END) {
+    // the floor is gone — drop straight down, accelerating like gravity
+    const fu = u / FALL_U_END;
+    const fallEase = fu * fu;
+    eyeY = edgePoint.y + (bottomEyeY - edgePoint.y) * fallEase;
+    pitchDown = 0.25 + smoothstep(fu) * 0.7;   // look down into the shaft as you fall
+    fogDensity = FOG_BASE + smoothstep(fu) * 0.07; // dark, enclosed shaft
+    fillInt = 0.35 * (1 - smoothstep(fu) * 0.75);
+    lampU = 0;
+  } else if (u <= BOUNCE_U_END) {
+    // impact, then a couple of decaying bounces before settling
+    const bu = (u - FALL_U_END) / (BOUNCE_U_END - FALL_U_END);
+    const settleLerp = smoothstep(bu);
+    const bounceWobble = Math.max(0, Math.sin(bu * Math.PI * 3)) * (1 - bu) * 1.3;
+    eyeY = bottomEyeY + (restEyeY - bottomEyeY) * settleLerp + bounceWobble;
+    pitchDown = 0.95 - settleLerp * 0.45;      // start lifting your gaze back up
+    fogDensity = FOG_BASE + 0.07 - settleLerp * 0.035;
+    fillInt = 0.35 * 0.25 + settleLerp * 0.35 * 0.35;
+    lampU = 0;
+  } else {
+    // on your feet now — look up as the lamp glows on, then level out to look
+    // straight ahead while the final text bubble fades in as you keep scrolling.
+    const su = (u - BOUNCE_U_END) / (1 - BOUNCE_U_END);
+    const eased = smoothstep(su);
+    eyeY = restEyeY + (reduceMotion ? 0 : Math.sin(clock.getElapsedTime() * 3.2) * 0.03);
+    pitchDown = 0.5 - eased * 0.55;            // 0.5 (look up) -> -0.05 (level ahead)
+    fogDensity = FOG_BASE + 0.035 * (1 - eased);
+    fillInt = 0.35 * 0.25 + eased * 0.35 * 0.6;
+    lampU = eased;
+  }
+
+  camera.position.set(camX, eyeY, camZ);
+
+  tmpHoriz.copy(edgeTangent).multiplyScalar((1 - pitchDown) * 4.5);
+  tmpLook.copy(camera.position).add(tmpHoriz);
+  tmpLook.y += -pitchDown * 4.5;
+
+  scene.fog.density = fogDensity;
+  fillLight.intensity = fillInt;
+  hemi.intensity = HEMI_BASE * (1 - 0.82 * lampU);
+  dir.intensity = DIR_BASE * (1 - 0.82 * lampU);
+  lampLight.intensity = lampU * LAMP_MAX;
+  lampBulbMat.emissiveIntensity = lampU * 1.4;
+
+  camera.lookAt(tmpLook);
+}
+
+// ---------- Render loop ----------
+function animate() {
+  requestAnimationFrame(animate);
+  progress += (targetProgress - progress) * (reduceMotion ? 1 : 0.08);
+  updateCamera(progress);
+  updatePanels(progress);
+  progressFill.style.width = (progress * 100).toFixed(2) + '%';
+
+  particles.rotation.y += 0.0006;
+  if (!reduceMotion) {
+    // gentle twinkle so the colored corridor dust feels alive, not static
+    mazeDustMat.opacity = 0.65 + Math.sin(clock.getElapsedTime() * 0.6) * 0.15;
+  }
+
+  renderer.render(scene, camera);
+}
+
+// ---------- Boot ----------
+function boot() {
+  targetProgress = virtualScroll;
+  progress = targetProgress;
+  updateCamera(progress);
+  updatePanels(progress);
+  animate();
+  requestAnimationFrame(() => {
+    loader.style.opacity = '0';
+    loader.style.visibility = 'hidden';
+  });
+}
+
+window.addEventListener('error', (e) => {
+  window.__labyrinthError = (e && e.message) || 'unknown error';
+});
+
+try {
+  if (document.readyState === 'complete') {
+    boot();
+  } else {
+    window.addEventListener('load', boot);
+  }
+  window.__labyrinthBooted = true;
+} catch (err) {
+  window.__labyrinthError = err.message;
+}
+</script>
+
+</body>
+</html>
